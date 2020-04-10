@@ -41,6 +41,7 @@ func main() {
 	route.User(api)
 	route.Profile(api)
 	route.Container(api)
+	route.Os(api)
 	// Listen and serve on 0.0.0.0:8080
 	router.Run(":8080")
 }
