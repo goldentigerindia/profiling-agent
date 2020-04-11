@@ -5,7 +5,11 @@ import (
 	"gopkg.in/yaml.v2"
 	"os"
 )
-var ApplicationConfig *Config=new(Config)
+var ApplicationConfig *ApplicationConfiguration=new(ApplicationConfiguration)
+type ApplicationConfiguration struct{
+	Configuration *Config
+	CpuTicks int64
+}
 type Config struct {
 	Server struct {
 		Port string `yaml:"port", envconfig:"SERVER_PORT"`

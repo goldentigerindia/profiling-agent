@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/goldentigerindia/profiling-agent/config"
 	"github.com/goldentigerindia/profiling-agent/route"
+	"github.com/goldentigerindia/profiling-agent/util"
 	"time"
 )
 
@@ -42,6 +44,7 @@ func main() {
 	route.Profile(api)
 	route.Container(api)
 	route.Os(api)
+	config.ApplicationConfig.CpuTicks=util.GetClockTick()
 	// Listen and serve on 0.0.0.0:8080
 	router.Run(":8080")
 }

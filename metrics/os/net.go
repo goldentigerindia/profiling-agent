@@ -1,6 +1,7 @@
 package os
 
 import (
+	"errors"
 	"github.com/goldentigerindia/profiling-agent/util"
 	"log"
 	"strconv"
@@ -36,12 +37,18 @@ type TransmitStat struct{
 	Compressed int64
 }
 
-func GetOSNetwork() *NetStat {
+func GetOSNetwork(processId int64) *NetStat {
 	stat := new(NetStat)
-
+	lines:=[]string{}
+	err:=errors.New("error")
 	defaultProcFolder := "/proc"
 	procPath := util.GetEnv("HOST_PROC", defaultProcFolder)
-	lines, err := util.ReadLines(procPath + "/net/dev")
+	if processId>0{
+		lines, err = util.ReadLines(procPath +"/"+strconv.Itoa(int(processId))+ "/net/dev")
+	}else{
+		lines, err = util.ReadLines(procPath + "/net/dev")
+	}
+
 	if err != nil {
 		log.Fatalf("readLines: %s", err)
 		stat = nil

@@ -2,6 +2,7 @@ package os
 
 import (
 	"fmt"
+	"github.com/goldentigerindia/profiling-agent/config"
 	"github.com/goldentigerindia/profiling-agent/util"
 	"log"
 	"os"
@@ -13,62 +14,77 @@ type ProcessStat struct {
 	Processes []ProcessInfoStat
 }
 type ProcessInfoStat struct {
-	ProcessId                      int64
-	Command                        string
-	State                          string
-	ParentProcessId                int64
-	ProcessGroupId                 int64
-	SessionId                      int64
-	TerminalProcessId              int64
-	TerminalProcessGroupId         int64
-	KernelFlagWord                 int64
-	MinorFaults                    int64
-	ChildrenMinorFaultWaited       int64
-	MajorFaults                    int64
-	ChildrenMajorFaultWaited       int64
-	UserModeTime                   int64
-	SystemModeTime                 int64
-	ChildrenUserModeWaitedTime     int64
-	ChildrenKernelModeWaitedTime   int64
-	Priority                       int64
-	PriorityNice                   int64
-	NumberOfThreads                int64
-	IntervalTimerValue             int64
-	StartTimeAfterSystemBoot       int64
-	VirtualMemorySizeInBytes       int64
-	ResidentSetSize                int64
-	ResidentSetSizeLimit           int64
-	CodeStartAddress               int64
-	CodeEndAddress                 int64
-	StartStackAddress              int64
-	KernelStackESP                 int64
-	KernelStackEIP                 int64
-	PendingSignals                 int64
-	BlockedSignals                 int64
-	IgnoredSignals                 int64
-	CaughtSignals                  int64
-	WaitingChannel                 int64
-	NumberOfPagesSwapped           int64
-	CumilativeNumebrOfSwaps        int64
-	ExitSignal                     int64
-	LastExecutedCpuCore            int64
-	RealTimeSchedulingPriority     int64
-	SchedulingPolicy               int64
-	BlockIODelaysCentiSecond       int64
-	GuestCPUTime                   int64
-	ChildrenGuestCPUTime           int64
-	ProgramBSSStartDataAddress     int64
-	ProgramBSSEndDataAddress       int64
-	ProgramHeapStartAddress        int64
-	ProgramArgumentStartAddress    int64
-	ProgramArgumentEndAddress      int64
-	ProgramEnvironmentStartAddress int64
-	ProgramEnvironmentEndAddress   int64
-	ThreadExitCode                 int64
-	ChildProcesses				   []*ProcessInfoStat
+	ProcessId                      int64   //The process ID
+	Command                        string  //The filename of the executable, in parentheses.	This is visible whether or not the executable is swapped out.
+	State                          string  //One of the following characters, indicating process	state:	R  Running	S  Sleeping in an interruptible wait	D  Waiting in uninterruptible disk sleep	Z  Zombie	T  Stopped (on a signal) or (before Linux 2.6.33) trace stopped 	t  Tracing stop (Linux 2.6.33 onward) W  Paging (only before Linux 2.6.0)	X  Dead (from Linux 2.6.0 onward)	x  Dead (Linux 2.6.33 to 3.13 only)	K  Wakekill (Linux 2.6.33 to 3.13 only) 	W  Waking (Linux 2.6.33 to 3.13 only)	P  Parked (Linux 3.9 to 3.13 only)
+	ParentProcessId                int64   //The PID of the parent of this process.
+	ProcessGroupId                 int64   //The process group ID of the process.
+	SessionId                      int64   //The session ID of the process.
+	TerminalProcessId              int64   //The controlling terminal of the process.  (The minor	device number is contained in the combination of bits 31 to 20 and 7 to 0; the major device number is in bits 15 to 8.)
+	TerminalProcessGroupId         int64   //The ID of the foreground process group of the controlling terminal of the process.
+	KernelFlagWord                 int64   //he kernel flags word of the process.  For bit meanings, see the PF_* defines in the Linux kernel	source file include/linux/sched.h.  Details depend	on the kernel version.
+	MinorFaults                    int64   //The number of minor faults the process has made which have not required loading a memory page from disk.
+	ChildrenMinorFaultWaited       int64   //The number of minor faults that the process's waited-for children have made.
+	MajorFaults                    int64   //The number of major faults the process has made which have required loading a memory page from disk.
+	ChildrenMajorFaultWaited       int64   //The number of major faults that the process's waited-for children have made.
+	UserModeTime                   int64   //Amount of time that this process has been scheduled in user mode, measured in clock ticks (divide by sysconf(_SC_CLK_TCK)).  This includes guest time, guest_time (time spent running a virtual CPU, see	below), so that applications that are not aware of the guest time field do not lose that time from	their calculations.
+	SystemModeTime                 int64   //Amount of time that this process has been scheduled in kernel mode, measured in clock ticks (divide by sysconf(_SC_CLK_TCK)).
+	ChildrenUserModeWaitedTime     int64   //Amount of time that this process's waited-for children have been scheduled in user mode, measured in	clock ticks (divide by sysconf(_SC_CLK_TCK)).  (See	also times(2).)  This includes guest time, cguest_time (time spent running a virtual CPU, see below).
+	ChildrenKernelModeWaitedTime   int64   //Amount of time that this process's waited-for children have been scheduled in kernel mode, measured in clock ticks (divide by sysconf(_SC_CLK_TCK)).
+	Priority                       int64   //(Explanation for Linux 2.6) For processes running a real-time scheduling policy (policy below; see sched_setscheduler(2)), this is the negated scheduling priority, minus one; that is, a number in the range -2 to -100, corresponding to real-time priorities 1 to 99.  For processes running under a nonreal-time scheduling policy, this is the raw nice value (setpriority(2)) as represented in the kernel.The kernel stores nice values as numbers in the	range 0 (high) to 39 (low), corresponding to the user-visible nice range of -20 to 19. Before Linux 2.6, this was a scaled value based on the scheduler weighting given to this process.
+	PriorityNice                   int64   //The nice value (see setpriority(2)), a value in the range 19 (low priority) to -20 (high priority).
+	NumberOfThreads                int64   //Number of threads in this process (since Linux 2.6).	Before kernel 2.6, this field was hard coded to 0 as a placeholder for an earlier removed field.
+	IntervalTimerValue             int64   //The time in jiffies before the next SIGALRM is sent to the process due to an interval timer.  Since kernel 2.6.17, this field is no longer maintained, and is hard coded as 0.
+	StartTimeAfterSystemBoot       int64   //The time the process started after system boot.  In kernels before Linux 2.6, this value was expressed in jiffies.  Since Linux 2.6, the value is expressed in clock ticks (divide by sysconf(_SC_CLK_TCK)). The format for this field was %lu before Linux 2.6.
+	VirtualMemorySizeInBytes       int64   //Virtual memory size in bytes
+	ResidentSetSize                int64   //Resident Set Size: number of pages the process has in real memory.  This is just the pages which count toward text, data, or stack space.  This does not 	include pages which have not been demand-loaded in,	or which are swapped out.
+	ResidentSetSizeLimit           int64   //Current soft limit in bytes on the rss of the process; see the description of RLIMIT_RSS in	getrlimit(2).
+	CodeStartAddress               int64   //The address above which program text can run.
+	CodeEndAddress                 int64   //The address below which program text can run.
+	StartStackAddress              int64   //The address of the start (i.e., bottom) of the stack.
+	KernelStackESP                 int64   //The current value of ESP (stack pointer), as found in the kernel stack page for the process.
+	KernelStackEIP                 int64   //The current EIP (instruction pointer).
+	PendingSignals                 int64   //The bitmap of pending signals, displayed as a decimal number.  Obsolete, because it does not provide	information on real-time signals; use /proc/[pid]/status instead.
+	BlockedSignals                 int64   //The bitmap of blocked signals, displayed as a decimal number.  Obsolete, because it does not provide	information on real-time signals; use /proc/[pid]/status instead.
+	IgnoredSignals                 int64   //The bitmap of ignored signals, displayed as a decimal number.  Obsolete, because it does not provide	information on real-time signals; use /proc/[pid]/status instead.
+	CaughtSignals                  int64   //The bitmap of caught signals, displayed as a decimal	number.  Obsolete, because it does not provide information on real-time signals; use /proc/[pid]/status instead.
+	WaitingChannel                 int64   //This is the "channel" in which the process is waiting.  It is the address of a location in the kernel where the process is sleeping.  The corresponding symbolic name can be found in /proc/[pid]/wchan.
+	NumberOfPagesSwapped           int64   //Number of pages swapped (not maintained).
+	CumilativeNumebrOfSwaps        int64   //Cumulative nswap for child processes (not maintained).
+	ExitSignal                     int64   //Signal to be sent to parent when we die.
+	LastExecutedCpuCore            int64   //CPU number last executed on.
+	RealTimeSchedulingPriority     int64   //Real-time scheduling priority, a number in the range	1 to 99 for processes scheduled under a real-time policy, or 0, for non-real-time processes (see sched_setscheduler(2)).
+	SchedulingPolicy               int64   //Scheduling policy (see sched_setscheduler(2)).Decode using the SCHED_* constants in linux/sched.h.
+	BlockIODelaysCentiSecond       int64   //Aggregated block I/O delays, measured in clock ticks(centiseconds).
+	GuestCPUTime                   int64   //Guest time of the process (time spent running a virtual CPU for a guest operating system), measured in clock ticks (divide by sysconf(_SC_CLK_TCK)).
+	ChildrenGuestCPUTime           int64   //Guest time of the process's children, measured in clock ticks (divide by sysconf(_SC_CLK_TCK)).
+	ProgramBSSStartDataAddress     int64   //Address above which program initialized and uninitialized (BSS) data are placed.
+	ProgramBSSEndDataAddress       int64   //Address below which program initialized and uninitialized (BSS) data are placed.
+	ProgramHeapStartAddress        int64   //Address above which program heap can be expanded	with brk(2).
+	ProgramArgumentStartAddress    int64   //Address above which program command-line arguments (argv) are placed.
+	ProgramArgumentEndAddress      int64   //Address below program command-line arguments (argv) are placed.
+	ProgramEnvironmentStartAddress int64   //Address above which program environment is placed.
+	ProgramEnvironmentEndAddress   int64   //Address below which program environment is placed.
+	ThreadExitCode                 int64   //The thread's exit status in the form reported by	waitpid(2).
+	TotalTime                      int64   //UserModeTime+SystemModeTime+ChildrenUserModeWaitedTime
+	Seconds                        int64   //Up Time - ( Start Time/ Clock Ticks)
+	CpuUsage                       float64 //( 100 * ((Total Time / Clock Ticks) / Seconds) )
+	ChildProcesses                 []*ProcessInfoStat
+	Network                        *NetStat
+	Memory	                       *ProcessStatM
+}
+type ProcessStatM struct {
+	TotalProgramSize int64  //total program size (same as VmSize in /proc/[pid]/status)
+	ResidentSetSize  int64  //resident set size (same as VmRSS in /proc/[pid]/status)
+	SharedPages      int64  //number of resident shared pages (i.e., backed by a file) (same as RssFile+RssShmem in /proc/[pid]/status)
+	Text             string //text (code)
+	Lib              int64  //library (unused since Linux 2.6; always 0)
+	Data             int64  //data + stack
+	DirtyPages       int64  //dirty pages (unused since Linux 2.6; always 0)
 }
 
 func GetOSProcess() *ProcessStat {
+	upTimeStat := GetOsUpTime()
 	stat := new(ProcessStat)
 	defaultProcFolder := "/proc"
 	procPath := util.GetEnv("HOST_PROC", defaultProcFolder)
@@ -82,9 +98,9 @@ func GetOSProcess() *ProcessStat {
 		log.Fatal(err)
 	}
 	processIdMap := make(map[int64]*ProcessInfoStat)
-	processIdMap[0]=new(ProcessInfoStat)
-	processIdMap[0].ProcessId=0
-	processIdMap[0].Command="ROOT"
+	processIdMap[0] = new(ProcessInfoStat)
+	processIdMap[0].ProcessId = 0
+	processIdMap[0].Command = "ROOT"
 	parentProcessIdMap := make(map[int64][]*ProcessInfoStat)
 	for _, file := range files {
 		if (file.IsDir()) {
@@ -154,6 +170,10 @@ func GetOSProcess() *ProcessStat {
 							processInfoStat.ProgramEnvironmentStartAddress, _ = strconv.ParseInt(fields[49], 10, 64)
 							processInfoStat.ProgramEnvironmentEndAddress, _ = strconv.ParseInt(fields[50], 10, 64)
 							processInfoStat.ThreadExitCode, _ = strconv.ParseInt(fields[51], 10, 64)
+							processInfoStat.Network = GetOSNetwork(processInfoStat.ProcessId)
+							processInfoStat.TotalTime = processInfoStat.UserModeTime + processInfoStat.SystemModeTime + processInfoStat.ChildrenUserModeWaitedTime
+							processInfoStat.Seconds = int64(upTimeStat.UpTimeFloat) - (processInfoStat.StartTimeAfterSystemBoot / config.ApplicationConfig.CpuTicks)
+							processInfoStat.CpuUsage = 100 * ((float64(processInfoStat.TotalTime) / float64(config.ApplicationConfig.CpuTicks)) / float64(processInfoStat.Seconds))
 							processIdMap[processInfoStat.ProcessId] = processInfoStat
 							childProcessInfo := []*ProcessInfoStat{}
 							if parentProcessIdMap[processInfoStat.ParentProcessId] != nil {
@@ -171,13 +191,13 @@ func GetOSProcess() *ProcessStat {
 		}
 	}
 	for key, element := range parentProcessIdMap {
-		if processIdMap[key]!=nil {
+		if processIdMap[key] != nil {
 			processIdMap[key].ChildProcesses = element
-		}else{
-			fmt.Println("processId : "+string(key)+"not found")
+		} else {
+			fmt.Println("processId : " + string(key) + "not found")
 		}
 	}
-	if processIdMap[0]!=nil{
+	if processIdMap[0] != nil {
 		stat.Processes = append(stat.Processes, *processIdMap[0])
 	}
 	return stat

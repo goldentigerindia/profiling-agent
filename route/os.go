@@ -54,7 +54,7 @@ func Os(api *gin.RouterGroup)  {
 		}
 	})
 	route.GET("/network", func(c *gin.Context) {
-		netStat := os.GetOSNetwork()
+		netStat := os.GetOSNetwork(-1)
 		if netStat ==nil {
 			c.JSON(http.StatusBadRequest, "Unable to receive data")
 		}else {

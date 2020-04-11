@@ -10,8 +10,10 @@ import (
 
 type UpTimeStat struct {
 	UpTime TimeStat
+	UpTimeFloat float64
 	UpTimeString string
 	IdleTime TimeStat
+	IdleTimeFloat float64
 	IdleTimeString string
 }
 type TimeStat struct{
@@ -89,9 +91,11 @@ func GetOsUpTime() *UpTimeStat {
 		dataLine := lines[0]
 		fields := strings.Fields(dataLine)
 		upTime,_:=strconv.ParseFloat(fields[0], 64)
+		upTimeStat.UpTimeFloat=upTime
 		upTimeStat.UpTime= secondsToTimeStat(upTime)
 		upTimeStat.UpTimeString=timeStatToDisplayString(upTimeStat.UpTime)
 		idleTime,_:=strconv.ParseFloat(fields[1], 64)
+		upTimeStat.IdleTimeFloat=idleTime
 		upTimeStat.IdleTime= secondsToTimeStat(idleTime)
 		upTimeStat.IdleTimeString=timeStatToDisplayString(upTimeStat.IdleTime)
 		}
