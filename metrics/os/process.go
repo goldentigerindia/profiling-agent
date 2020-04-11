@@ -173,10 +173,12 @@ func GetOSProcess() *ProcessStat {
 	for key, element := range parentProcessIdMap {
 		if processIdMap[key]!=nil {
 			processIdMap[key].ChildProcesses = element
-			stat.Processes = append(stat.Processes, *processIdMap[key])
 		}else{
 			fmt.Println("processId : "+string(key)+"not found")
 		}
+	}
+	if processIdMap[0]!=nil{
+		stat.Processes = append(stat.Processes, *processIdMap[0])
 	}
 	return stat
 }
