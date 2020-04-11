@@ -1,6 +1,7 @@
 package os
 
 import (
+	"fmt"
 	"github.com/goldentigerindia/profiling-agent/util"
 	"log"
 	"os"
@@ -64,6 +65,7 @@ type ProcessInfoStat struct {
 	ProgramEnvironmentStartAddress int64
 	ProgramEnvironmentEndAddress   int64
 	ThreadExitCode                 int64
+	ChildProcesses				   []*ProcessInfoStat
 }
 
 func GetOSProcess() *ProcessStat {
@@ -79,7 +81,11 @@ func GetOSProcess() *ProcessStat {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	processIdMap := make(map[int64]*ProcessInfoStat)
+	processIdMap[0]=new(ProcessInfoStat)
+	processIdMap[0].ProcessId=0
+	processIdMap[0].Command="ROOT"
+	parentProcessIdMap := make(map[int64][]*ProcessInfoStat)
 	for _, file := range files {
 		if (file.IsDir()) {
 			if _, err := strconv.ParseInt(file.Name(), 10, 64); err == nil {
@@ -148,13 +154,28 @@ func GetOSProcess() *ProcessStat {
 							processInfoStat.ProgramEnvironmentStartAddress, _ = strconv.ParseInt(fields[49], 10, 64)
 							processInfoStat.ProgramEnvironmentEndAddress, _ = strconv.ParseInt(fields[50], 10, 64)
 							processInfoStat.ThreadExitCode, _ = strconv.ParseInt(fields[51], 10, 64)
-
+							processIdMap[processInfoStat.ProcessId] = processInfoStat
+							childProcessInfo := []*ProcessInfoStat{}
+							if parentProcessIdMap[processInfoStat.ParentProcessId] != nil {
+								childProcessInfo = parentProcessIdMap[processInfoStat.ParentProcessId]
+							}
+							childProcessInfo = append(childProcessInfo, processInfoStat)
+							parentProcessIdMap[processInfoStat.ParentProcessId] = childProcessInfo
 						}
 					}
-					stat.Processes = append(stat.Processes, *processInfoStat)
+					//stat.Processes = append(stat.Processes, *processInfoStat)
+
 				}
 
 			}
+		}
+	}
+	for key, element := range parentProcessIdMap {
+		if processIdMap[key]!=nil {
+			processIdMap[key].ChildProcesses = element
+			stat.Processes = append(stat.Processes, *processIdMap[key])
+		}else{
+			fmt.Println("processId : "+string(key)+"not found")
 		}
 	}
 	return stat
