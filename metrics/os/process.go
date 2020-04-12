@@ -1,6 +1,7 @@
 package os
 
 import (
+	"errors"
 	"fmt"
 	"github.com/goldentigerindia/profiling-agent/config"
 	"github.com/goldentigerindia/profiling-agent/util"
@@ -11,7 +12,20 @@ import (
 )
 
 type ProcessStat struct {
-	Processes []ProcessInfoStat
+	ProcessTree *ProcessInfoStat
+	Top         []*TopStat
+}
+type TopStat struct {
+	ProcessId             int64
+	ParentProcessId       int64
+	UserId                string
+	Priotiry              int64
+	PriorityNice          int64
+	State                 string
+	NumberOfThreads       int64
+	MemoryUsagePercentage float64
+	CpuUsagePercentage    float64
+	Command               string
 }
 type ProcessInfoStat struct {
 	ProcessId                      int64   //The process ID
@@ -69,9 +83,13 @@ type ProcessInfoStat struct {
 	TotalTime                      int64   //UserModeTime+SystemModeTime+ChildrenUserModeWaitedTime
 	Seconds                        int64   //Up Time - ( Start Time/ Clock Ticks)
 	CpuUsage                       float64 //( 100 * ((Total Time / Clock Ticks) / Seconds) )
+	MemoryUsage                    float64 // ((ResidentSetSize + Data)*100)/ Mem Total
 	ChildProcesses                 []*ProcessInfoStat
 	Network                        *NetStat
-	Memory	                       *ProcessStatM
+	Memory                         *ProcessStatM
+	ProcessDetails                 *ProcessStatus
+	CommandString                  string
+	Top *TopStat
 }
 type ProcessStatM struct {
 	TotalProgramSize int64  //total program size (same as VmSize in /proc/[pid]/status)
@@ -82,10 +100,22 @@ type ProcessStatM struct {
 	Data             int64  //data + stack
 	DirtyPages       int64  //dirty pages (unused since Linux 2.6; always 0)
 }
+type ProcessStatus struct {
+	Entries map[string]string
+}
 
 func GetOSProcess() *ProcessStat {
 	upTimeStat := GetOsUpTime()
+	memStat := GetOSMem()
+	osUsers := GetOSUsers()
+	totalMemory := int64(0)
+	if memStat != nil && memStat.Entries != nil {
+		if _, ok := memStat.Entries["MemTotal"]; ok {
+			totalMemory, _ = strconv.ParseInt(memStat.Entries["MemTotal"], 10, 64)
+		}
+	}
 	stat := new(ProcessStat)
+	stat.Top = []*TopStat{}
 	defaultProcFolder := "/proc"
 	procPath := util.GetEnv("HOST_PROC", defaultProcFolder)
 	f, err := os.Open(procPath)
@@ -171,9 +201,46 @@ func GetOSProcess() *ProcessStat {
 							processInfoStat.ProgramEnvironmentEndAddress, _ = strconv.ParseInt(fields[50], 10, 64)
 							processInfoStat.ThreadExitCode, _ = strconv.ParseInt(fields[51], 10, 64)
 							processInfoStat.Network = GetOSNetwork(processInfoStat.ProcessId)
+							processInfoStat.Memory = GetProcessMemoryStat(processInfoStat.ProcessId)
+							processInfoStat.ProcessDetails = GetProcessStatus(processInfoStat.ProcessId)
 							processInfoStat.TotalTime = processInfoStat.UserModeTime + processInfoStat.SystemModeTime + processInfoStat.ChildrenUserModeWaitedTime
 							processInfoStat.Seconds = int64(upTimeStat.UpTimeFloat) - (processInfoStat.StartTimeAfterSystemBoot / config.ApplicationConfig.CpuTicks)
 							processInfoStat.CpuUsage = 100 * ((float64(processInfoStat.TotalTime) / float64(config.ApplicationConfig.CpuTicks)) / float64(processInfoStat.Seconds))
+							if processInfoStat.Memory != nil && processInfoStat.Memory.ResidentSetSize > 0 && processInfoStat.Memory.Data > 0 && memStat != nil && totalMemory > 0 {
+								processInfoStat.MemoryUsage = ((float64(processInfoStat.Memory.ResidentSetSize) + float64(processInfoStat.Memory.Data)) * 100) / float64(totalMemory)
+							}
+							processInfoStat.CommandString = GetCommand(processInfoStat.ProcessId)
+							//Populate TopStatus
+							topStat := new(TopStat)
+							topStat.ProcessId = processInfoStat.ProcessId
+							topStat.ParentProcessId = processInfoStat.ParentProcessId
+							if processInfoStat.ProcessDetails != nil && processInfoStat.ProcessDetails.Entries != nil && len(processInfoStat.ProcessDetails.Entries) > 0 {
+								if _, ok := processInfoStat.ProcessDetails.Entries["Uid"]; ok {
+									uidRow := processInfoStat.ProcessDetails.Entries["Uid"]
+									fields := strings.Fields(uidRow)
+									if fields != nil && len(fields) > 0 {
+										uid := strings.TrimSpace(fields[0])
+										if len(uid) > 0 && osUsers != nil && osUsers.UserMap != nil && len(osUsers.UserMap) > 0 {
+											if _, ok := osUsers.UserMap[uid]; ok {
+												user := osUsers.UserMap[uid]
+												if len(user.UserName) > 0 {
+													topStat.UserId = user.UserName
+												}
+											}
+										}
+									}
+								}
+							}
+
+							topStat.Priotiry = processInfoStat.Priority
+							topStat.PriorityNice = processInfoStat.PriorityNice
+							topStat.State = processInfoStat.State
+							topStat.NumberOfThreads = processInfoStat.NumberOfThreads
+							topStat.MemoryUsagePercentage = processInfoStat.MemoryUsage
+							topStat.CpuUsagePercentage = processInfoStat.CpuUsage
+							topStat.Command = processInfoStat.CommandString
+							stat.Top = append(stat.Top, topStat)
+							processInfoStat.Top=topStat
 							processIdMap[processInfoStat.ProcessId] = processInfoStat
 							childProcessInfo := []*ProcessInfoStat{}
 							if parentProcessIdMap[processInfoStat.ParentProcessId] != nil {
@@ -181,6 +248,7 @@ func GetOSProcess() *ProcessStat {
 							}
 							childProcessInfo = append(childProcessInfo, processInfoStat)
 							parentProcessIdMap[processInfoStat.ParentProcessId] = childProcessInfo
+
 						}
 					}
 					//stat.Processes = append(stat.Processes, *processInfoStat)
@@ -198,9 +266,80 @@ func GetOSProcess() *ProcessStat {
 		}
 	}
 	if processIdMap[0] != nil {
-		stat.Processes = append(stat.Processes, *processIdMap[0])
+		stat.ProcessTree = processIdMap[0]
 	}
 	return stat
+}
+func GetProcessMemoryStat(processId int64) *ProcessStatM {
+	processStatM := new(ProcessStatM)
+	lines := []string{}
+	err := errors.New("error")
+	defaultProcFolder := "/proc"
+	procPath := util.GetEnv("HOST_PROC", defaultProcFolder)
+	lines, err = util.ReadLines(procPath + "/" + strconv.Itoa(int(processId)) + "/statm")
+	if err != nil {
+		log.Fatalf("readLines: %s", err)
+		processStatM = nil
+
+	} else {
+
+		if len(lines) > 0 {
+			dataLine := lines[0]
+			fields := strings.Fields(dataLine)
+			processStatM.TotalProgramSize, _ = strconv.ParseInt(fields[0], 10, 64)
+			processStatM.ResidentSetSize, _ = strconv.ParseInt(fields[1], 10, 64)
+			processStatM.SharedPages, _ = strconv.ParseInt(fields[2], 10, 64)
+			processStatM.Text = fields[3]
+			processStatM.Lib, _ = strconv.ParseInt(fields[4], 10, 64)
+			processStatM.Data, _ = strconv.ParseInt(fields[5], 10, 64)
+			processStatM.DirtyPages, _ = strconv.ParseInt(fields[6], 10, 64)
+		}
+	}
+
+	return processStatM
+}
+func GetProcessStatus(processId int64) *ProcessStatus {
+	stat := new(ProcessStatus)
+	stat.Entries = make(map[string]string)
+	defaultProcFolder := "/proc"
+	procPath := util.GetEnv("HOST_PROC", defaultProcFolder)
+	lines, err := util.ReadLines(procPath + "/" + strconv.Itoa(int(processId)) + "/status")
+	if err != nil {
+		log.Fatalf("readLines: %s", err)
+		stat = nil
+
+	} else {
+
+		if len(lines) > 0 {
+			for i := 0; i < len(lines); i++ {
+				dataLine := lines[i]
+
+				fields := strings.SplitN(dataLine, ":", -1)
+				if fields != nil && len(fields) > 1 && len(strings.TrimSpace(fields[0])) > 0 && len(strings.TrimSpace(fields[1])) > 0 {
+					stat.Entries[strings.TrimSpace(fields[0])] = strings.TrimSpace(fields[1])
+				}
+			}
+		}
+	}
+	return stat
+}
+func GetCommand(processId int64) string {
+	command := ""
+	defaultProcFolder := "/proc"
+	procPath := util.GetEnv("HOST_PROC", defaultProcFolder)
+	lines, err := util.ReadLines(procPath + "/" + strconv.Itoa(int(processId)) + "/comm")
+	if err != nil {
+		log.Fatalf("readLines: %s", err)
+		command = ""
+
+	} else {
+
+		if len(lines) > 0 {
+			command = lines[0]
+
+		}
+	}
+	return command
 }
 func getStateName(stateChar string) string {
 	state := ""
