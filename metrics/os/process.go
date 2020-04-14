@@ -12,8 +12,102 @@ import (
 )
 
 type ProcessStat struct {
-	ProcessTree *ProcessInfoStat
+	ProcessTree []*ProcessInfoStat
 	Top         []*TopStat
+}
+/*
+http://man7.org/linux/man-pages/man5/proc.5.html
+$ head -1 /proc/24784/net/tcp; grep 15907701 /proc/24784/net/tcp
+  sl  local_address rem_address   st  tx_queue  rx_queue tr tm->when  retrnsmt   uid  timeout inode
+  46: 010310AC:9C4C 030310AC:1770 01 0100000150:00000000  01:00000019 00000000  1000 0 54165785 4 cd1e6040 25 4 27 3 -1
+
+46: 010310AC:9C4C 030310AC:1770 01
+|   |         |   |        |    |--> connection state
+|   |         |   |        |------> remote TCP port number
+|   |         |   |-------------> remote IPv4 address
+|   |         |--------------------> local TCP port number
+|   |---------------------------> local IPv4 address
+|----------------------------------> number of entry
+
+00000150:00000000 01:00000019 00000000
+|        |        |  |        |--> number of unrecovered RTO timeouts
+|        |        |  |----------> number of jiffies until timer expires
+|        |        |----------------> timer_active (see below)
+|        |----------------------> receive-queue
+|-------------------------------> transmit-queue
+
+1000 0 54165785 4 cd1e6040 25 4 27 3 -1
+|    | |        | |        |  | |  |  |--> slow start size threshold,
+|    | |        | |        |  | |  |       or -1 if the treshold
+|    | |        | |        |  | |  |       is >= 0xFFFF
+|    | |        | |        |  | |  |----> sending congestion window
+|    | |        | |        |  | |-------> (ack.quick<<1)|ack.pingpong
+|    | |        | |        |  |---------> Predicted tick of soft clock
+|    | |        | |        |               (delayed ACK control data)
+|    | |        | |        |------------> retransmit timeout
+|    | |        | |------------------> location of socket in memory
+|    | |        |-----------------------> socket reference count
+|    | |-----------------------------> inode
+|    |----------------------------------> unanswered 0-window probes
+|---------------------------------------------> uid
+timer_active:
+  0  no timer is pending
+  1  retransmit-timer is pending
+  2  another timer (e.g. delayed ack or keepalive) is pending
+  3  this is a socket in TIME_WAIT state. Not all fields will contain
+     data (or even exist)
+  4  zero window probe timer is pending
+package main
+
+import "fmt"
+import "encoding/hex"
+func main() {
+    z:="0A010100"
+    a,_:=hex.DecodeString(z)
+    fmt.Printf("%v.%v.%v.%v",a[0],a[1],a[2],a[3])
+
+ }
+enum {
+    TCP_ESTABLISHED = 1,
+    TCP_SYN_SENT,
+    TCP_SYN_RECV,
+    TCP_FIN_WAIT1,
+    TCP_FIN_WAIT2,
+    TCP_TIME_WAIT,
+    TCP_CLOSE,
+    TCP_CLOSE_WAIT,
+    TCP_LAST_ACK,
+    TCP_LISTEN,
+	TCP_MAX_STATES  Leave at the end!
+};
+
+sudo cat /proc/1/ns/net
+ */
+type Tcp struct{
+	SequenceId int64
+	LocalIpAddress string
+	LocalPortNumber int64
+	RemoteIpAddress string
+	RemotePortNumber int64
+	ConnectionState string
+	TransmitQueue string
+	ReceiveQueue string
+	TimerActive string
+	NumberOfJiffiesUntilTimerExpires int64
+	NumberOfUnRecoveredRTOTimeouts int64
+	UID string
+	UnAnsweredZeroWindowProbes int64
+	INode int64
+	SocketReferenceCount int64
+	SocketLocationAddress string
+	TransmitTimeout int64
+	DelayedAcknowledgeControlData int64
+	AcknowledgePingPong int64
+	SendingCongestionWindow int64
+	SlowStartThreshold int64
+}
+type Tcp6 struct{
+
 }
 type TopStat struct {
 	ProcessId             int64
@@ -26,6 +120,11 @@ type TopStat struct {
 	MemoryUsagePercentage float64
 	CpuUsagePercentage    float64
 	Command               string
+}
+type TotalIncludingChildren struct {
+	TotalNumberOfThreads       int64
+	TotalMemoryUsagePercentage float64
+	TotalCpuUsagePercentage    float64
 }
 type ProcessInfoStat struct {
 	ProcessId                      int64   //The process ID
@@ -89,7 +188,8 @@ type ProcessInfoStat struct {
 	Memory                         *ProcessStatM
 	ProcessDetails                 *ProcessStatus
 	CommandString                  string
-	Top *TopStat
+	Top                            *TopStat
+	TotalIncludingChildren         *TotalIncludingChildren
 }
 type ProcessStatM struct {
 	TotalProgramSize int64  //total program size (same as VmSize in /proc/[pid]/status)
@@ -105,6 +205,7 @@ type ProcessStatus struct {
 }
 
 func GetOSProcess() *ProcessStat {
+
 	upTimeStat := GetOsUpTime()
 	memStat := GetOSMem()
 	osUsers := GetOSUsers()
@@ -115,6 +216,7 @@ func GetOSProcess() *ProcessStat {
 		}
 	}
 	stat := new(ProcessStat)
+	stat.ProcessTree = []*ProcessInfoStat{}
 	stat.Top = []*TopStat{}
 	defaultProcFolder := "/proc"
 	procPath := util.GetEnv("HOST_PROC", defaultProcFolder)
@@ -240,7 +342,7 @@ func GetOSProcess() *ProcessStat {
 							topStat.CpuUsagePercentage = processInfoStat.CpuUsage
 							topStat.Command = processInfoStat.CommandString
 							stat.Top = append(stat.Top, topStat)
-							processInfoStat.Top=topStat
+							processInfoStat.Top = topStat
 							processIdMap[processInfoStat.ProcessId] = processInfoStat
 							childProcessInfo := []*ProcessInfoStat{}
 							if parentProcessIdMap[processInfoStat.ParentProcessId] != nil {
@@ -266,9 +368,42 @@ func GetOSProcess() *ProcessStat {
 		}
 	}
 	if processIdMap[0] != nil {
-		stat.ProcessTree = processIdMap[0]
+		rootProcess := processIdMap[0]
+		if rootProcess != nil && rootProcess.ChildProcesses != nil && len(rootProcess.ChildProcesses) > 0 {
+			for _, childProcess := range rootProcess.ChildProcesses {
+				if childProcess != nil {
+					stat.ProcessTree = append(stat.ProcessTree, childProcess)
+					GetTotalIncludingChildren(childProcess)
+				}
+			}
+		}
 	}
 	return stat
+}
+func GetTotalIncludingChildren(processInfoStat *ProcessInfoStat) {
+	childrenTotal := new(TotalIncludingChildren)
+	if processInfoStat.ChildProcesses == nil || len(processInfoStat.ChildProcesses) == 0 {
+		childrenTotal.TotalCpuUsagePercentage = processInfoStat.Top.CpuUsagePercentage
+		childrenTotal.TotalMemoryUsagePercentage = processInfoStat.Top.MemoryUsagePercentage
+		childrenTotal.TotalNumberOfThreads = processInfoStat.Top.NumberOfThreads
+		processInfoStat.TotalIncludingChildren=childrenTotal
+	} else {
+		childrenTotal.TotalCpuUsagePercentage = processInfoStat.Top.CpuUsagePercentage
+		childrenTotal.TotalMemoryUsagePercentage = processInfoStat.Top.MemoryUsagePercentage
+		childrenTotal.TotalNumberOfThreads = processInfoStat.Top.NumberOfThreads
+		for _, childProcess := range processInfoStat.ChildProcesses {
+			if childProcess != nil {
+				GetTotalIncludingChildren(childProcess)
+				if childProcess.TotalIncludingChildren != nil {
+					childrenTotal.TotalNumberOfThreads = childrenTotal.TotalNumberOfThreads + childProcess.TotalIncludingChildren.TotalNumberOfThreads
+					childrenTotal.TotalMemoryUsagePercentage = childrenTotal.TotalMemoryUsagePercentage + childProcess.TotalIncludingChildren.TotalMemoryUsagePercentage
+					childrenTotal.TotalCpuUsagePercentage = childrenTotal.TotalCpuUsagePercentage + childProcess.TotalIncludingChildren.TotalCpuUsagePercentage
+				}
+			}
+		}
+		processInfoStat.TotalIncludingChildren=childrenTotal
+	}
+
 }
 func GetProcessMemoryStat(processId int64) *ProcessStatM {
 	processStatM := new(ProcessStatM)
