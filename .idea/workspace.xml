@@ -1,12 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="ff5e051f-6ca9-4586-8f72-c87e1a7b0b7c" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/go.sum" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/metrics/os/process.go" beforeDir="false" afterPath="$PROJECT_DIR$/metrics/os/process.go" afterDir="false" />
-    </list>
+    <list default="true" id="ff5e051f-6ca9-4586-8f72-c87e1a7b0b7c" name="Default Changelist" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -45,42 +40,15 @@
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="ProjectId" id="1aduiyUkHAx8krUiJ6jfRjIr3Ki" />
-  <component name="ProjectView">
-    <navigator proportions="" version="1">
-      <foldersAlwaysOnTop value="true" />
-    </navigator>
-    <panes>
-      <pane id="Scope" />
-      <pane id="ProjectPane">
-        <subPane>
-          <expand>
-            <path>
-              <item name="profiling-agent" type="b2602c69:ProjectViewProjectNode" />
-              <item name="profiling-agent" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="profiling-agent" type="b2602c69:ProjectViewProjectNode" />
-              <item name="profiling-agent" type="462c0819:PsiDirectoryNode" />
-              <item name="initilizers" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="profiling-agent" type="b2602c69:ProjectViewProjectNode" />
-              <item name="profiling-agent" type="462c0819:PsiDirectoryNode" />
-              <item name="metrics" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="profiling-agent" type="b2602c69:ProjectViewProjectNode" />
-              <item name="profiling-agent" type="462c0819:PsiDirectoryNode" />
-              <item name="metrics" type="462c0819:PsiDirectoryNode" />
-              <item name="os" type="462c0819:PsiDirectoryNode" />
-            </path>
-          </expand>
-          <select />
-        </subPane>
-      </pane>
-    </panes>
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="2" id="Add" />
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
   </component>
   <component name="PropertiesComponent">
+    <property name="ASKED_ADD_EXTERNAL_FILES" value="true" />
     <property name="DefaultGoTemplateProperty" value="Go File" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="configurable.Global.GOPATH.is.expanded" value="true" />
@@ -88,6 +56,7 @@
     <property name="configurable.Project.GOPATH.is.expanded" value="true" />
     <property name="go.gopath.indexing.explicitly.defined" value="true" />
     <property name="go.import.settings.migrated" value="true" />
+    <property name="go.vendoring.notification.had.been.shown" value="true" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="settings.editor.selected.configurable" value="com.goide.configuration.GoLibrariesConfigurableProvider" />
   </component>
@@ -128,6 +97,9 @@
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="2" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
   </component>
   <component name="VgoProject">
     <integration-enabled>true</integration-enabled>
