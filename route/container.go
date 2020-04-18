@@ -14,7 +14,7 @@ func Container(api *gin.RouterGroup)  {
 	route := api.Group("/container")
 	// This handler will match /route/john but will not match /route/ or /route
 	route.GET("/list", func(c *gin.Context) {
-		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+		cli, err := client.NewEnvClient()
 		if err != nil {
 			panic(err)
 		}
@@ -31,7 +31,7 @@ func Container(api *gin.RouterGroup)  {
 	route.GET("/logs/:containerId", func(c *gin.Context) {
 		ctx := context.Background()
 		containerId := c.Param("containerId")
-		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+		cli, err := client.NewEnvClient()
 		if err != nil {
 			panic(err)
 		}

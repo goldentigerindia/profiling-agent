@@ -1,20 +1,28 @@
 package os
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/goldentigerindia/profiling-agent/config"
 	"github.com/goldentigerindia/profiling-agent/util"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"strings"
+)
+type TcpType string
+const(
+	TCP4 TcpType = "TCP4"
+	TCP6 ="TCP6"
 )
 
 type ProcessStat struct {
 	ProcessTree []*ProcessInfoStat
 	Top         []*TopStat
 }
+
 /*
 http://man7.org/linux/man-pages/man5/proc.5.html
 $ head -1 /proc/24784/net/tcp; grep 15907701 /proc/24784/net/tcp
@@ -83,31 +91,32 @@ enum {
 
 sudo cat /proc/1/ns/net
  */
-type Tcp struct{
-	SequenceId int64
-	LocalIpAddress string
-	LocalPortNumber int64
-	RemoteIpAddress string
-	RemotePortNumber int64
-	ConnectionState string
-	TransmitQueue string
-	ReceiveQueue string
-	TimerActive string
+type Tcp struct {
+	SequenceId                       int64
+	LocalIpAddress                   string
+	LocalPortNumber                  int64
+	RemoteIpAddress                  string
+	RemotePortNumber                 int64
+	ConnectionState                  string
+	TransmitQueue                    string
+	ReceiveQueue                     string
+	TimerActive                      string
 	NumberOfJiffiesUntilTimerExpires int64
-	NumberOfUnRecoveredRTOTimeouts int64
-	UID string
-	UnAnsweredZeroWindowProbes int64
-	INode int64
-	SocketReferenceCount int64
-	SocketLocationAddress string
-	TransmitTimeout int64
-	DelayedAcknowledgeControlData int64
-	AcknowledgePingPong int64
-	SendingCongestionWindow int64
-	SlowStartThreshold int64
+	NumberOfUnRecoveredRTOTimeouts   int64
+	UID                              string
+	UnAnsweredZeroWindowProbes       int64
+	INode                            int64
+	SocketReferenceCount             int64
+	SocketLocationAddress            string
+	ReTransmitTimeout                int64
+	DelayedAcknowledgeControlData    int64
+	AcknowledgePingPong              int64
+	SendingCongestionWindow          int64
+	SlowStartThreshold               int64
 }
-type Tcp6 struct{
-
+type TcpStats struct {
+	TcpByStatus map[string][]*Tcp
+	Tcp6ByStatus map[string][]*Tcp
 }
 type TopStat struct {
 	ProcessId             int64
@@ -181,15 +190,16 @@ type ProcessInfoStat struct {
 	ThreadExitCode                 int64   //The thread's exit status in the form reported by	waitpid(2).
 	TotalTime                      int64   //UserModeTime+SystemModeTime+ChildrenUserModeWaitedTime
 	Seconds                        int64   //Up Time - ( Start Time/ Clock Ticks)
-	CpuUsage                       float64 //( 100 * ((Total Time / Clock Ticks) / Seconds) )
-	MemoryUsage                    float64 // ((ResidentSetSize + Data)*100)/ Mem Total
-	ChildProcesses                 []*ProcessInfoStat
-	Network                        *NetStat
-	Memory                         *ProcessStatM
-	ProcessDetails                 *ProcessStatus
-	CommandString                  string
-	Top                            *TopStat
-	TotalIncludingChildren         *TotalIncludingChildren
+	CpuUsage               float64 //( 100 * ((Total Time / Clock Ticks) / Seconds) )
+	MemoryUsage            float64 // ((ResidentSetSize + Data)*100)/ Mem Total
+	ChildProcesses         []*ProcessInfoStat
+	Network                *NetStat
+	Memory                 *ProcessStatM
+	ProcessDetails         *ProcessStatus
+	CommandString          string
+	Top                    *TopStat
+	TotalIncludingChildren *TotalIncludingChildren
+	TCP                    *TcpStats
 }
 type ProcessStatM struct {
 	TotalProgramSize int64  //total program size (same as VmSize in /proc/[pid]/status)
@@ -252,7 +262,7 @@ func GetOSProcess() *ProcessStat {
 							fields := strings.Fields(dataLine)
 							processInfoStat.ProcessId, _ = strconv.ParseInt(fields[0], 10, 64)
 							processInfoStat.Command = fields[1]
-							processInfoStat.State = getStateName(fields[2])
+							processInfoStat.State = getProcessStateName(fields[2])
 							processInfoStat.ParentProcessId, _ = strconv.ParseInt(fields[3], 10, 64)
 							processInfoStat.ProcessGroupId, _ = strconv.ParseInt(fields[4], 10, 64)
 							processInfoStat.SessionId, _ = strconv.ParseInt(fields[5], 10, 64)
@@ -343,6 +353,7 @@ func GetOSProcess() *ProcessStat {
 							topStat.Command = processInfoStat.CommandString
 							stat.Top = append(stat.Top, topStat)
 							processInfoStat.Top = topStat
+							processInfoStat.TCP = GetTcpStats(processInfoStat.ProcessId)
 							processIdMap[processInfoStat.ProcessId] = processInfoStat
 							childProcessInfo := []*ProcessInfoStat{}
 							if parentProcessIdMap[processInfoStat.ParentProcessId] != nil {
@@ -386,7 +397,7 @@ func GetTotalIncludingChildren(processInfoStat *ProcessInfoStat) {
 		childrenTotal.TotalCpuUsagePercentage = processInfoStat.Top.CpuUsagePercentage
 		childrenTotal.TotalMemoryUsagePercentage = processInfoStat.Top.MemoryUsagePercentage
 		childrenTotal.TotalNumberOfThreads = processInfoStat.Top.NumberOfThreads
-		processInfoStat.TotalIncludingChildren=childrenTotal
+		processInfoStat.TotalIncludingChildren = childrenTotal
 	} else {
 		childrenTotal.TotalCpuUsagePercentage = processInfoStat.Top.CpuUsagePercentage
 		childrenTotal.TotalMemoryUsagePercentage = processInfoStat.Top.MemoryUsagePercentage
@@ -401,7 +412,7 @@ func GetTotalIncludingChildren(processInfoStat *ProcessInfoStat) {
 				}
 			}
 		}
-		processInfoStat.TotalIncludingChildren=childrenTotal
+		processInfoStat.TotalIncludingChildren = childrenTotal
 	}
 
 }
@@ -476,7 +487,192 @@ func GetCommand(processId int64) string {
 	}
 	return command
 }
-func getStateName(stateChar string) string {
+func GetTcpStats(processId int64) *TcpStats{
+tcpStats := new(TcpStats)
+tcpStats.TcpByStatus=GetTcpByStatus(processId,TCP4)
+tcpStats.Tcp6ByStatus=GetTcpByStatus(processId,TCP6)
+return tcpStats
+}
+func GetTcpByStatus(processId int64,tcpType TcpType) map[string][]*Tcp {
+	tcpStatusMap := make(map[string][]*Tcp)
+	defaultProcFolder := "/proc"
+	procPath := util.GetEnv("HOST_PROC", defaultProcFolder)
+	lines:=[]string{}
+	err:=errors.New("")
+	if tcpType==TCP4 {
+		lines, err = util.ReadLines(procPath + "/" + strconv.Itoa(int(processId)) + "/net/tcp")
+	}else if tcpType==TCP6{
+		lines, err = util.ReadLines(procPath + "/" + strconv.Itoa(int(processId)) + "/net/tcp6")
+	}
+	if err != nil {
+		log.Fatalf("readLines: %s", err)
+		tcpStatusMap = nil
+
+	} else {
+		if len(lines) > 0 {
+			for i := 1; i < len(lines); i++ {
+				dataLine := lines[i]
+				fields := strings.Fields(dataLine)
+				if fields != nil && len(fields) > 0 {
+					tcp := new(Tcp)
+					if len(fields)>=4 {
+						/*
+							46: 010310AC:9C4C 030310AC:1770 01
+|   |         |   |        |    |--> connection state
+|   |         |   |        |------> remote TCP port number
+|   |         |   |-------------> remote IPv4 address
+|   |         |--------------------> local TCP port number
+|   |---------------------------> local IPv4 address
+|----------------------------------> number of entry
+						 */
+						tcp.SequenceId, _ = strconv.ParseInt(strings.ReplaceAll(fields[0], ":", ""), 10, 64)
+						localIpAddressPort := strings.Split(fields[1], ":")
+						if localIpAddressPort != nil && len(localIpAddressPort) == 2 {
+							if tcpType==TCP4 {
+								tcp.LocalIpAddress = ConvertHexToIPV4(localIpAddressPort[0])
+							}else if tcpType==TCP6{
+								tcp.LocalIpAddress = ConvertHexToIPV6(localIpAddressPort[0])
+							}
+							tcp.LocalPortNumber, _ = strconv.ParseInt(hexaNumberToInteger(localIpAddressPort[1]), 16, 64)
+						}
+						remoteIpAddressPort := strings.Split(fields[2], ":")
+						if remoteIpAddressPort != nil && len(remoteIpAddressPort) == 2 {
+							if tcpType==TCP4 {
+								tcp.RemoteIpAddress = ConvertHexToIPV4(remoteIpAddressPort[0])
+							}else if tcpType==TCP6{
+								tcp.RemoteIpAddress = ConvertHexToIPV6(remoteIpAddressPort[0])
+							}
+							tcp.RemotePortNumber, _ = strconv.ParseInt(hexaNumberToInteger(remoteIpAddressPort[1]), 16, 64)
+						}
+						stateCode, _ := strconv.ParseInt(hexaNumberToInteger(fields[3]), 16, 64)
+						tcp.ConnectionState = getTCPStateName(stateCode)
+					}
+					if len(fields)>=7 {
+						/*
+						00000150:00000000 01:00000019 00000000
+|        |        |  |        |--> number of unrecovered RTO timeouts
+|        |        |  |----------> number of jiffies until timer expires
+|        |        |----------------> timer_active (see below)
+|        |----------------------> receive-queue
+|-------------------------------> transmit-queue
+						 */
+						transmitReceiveQueue := strings.Split(fields[4], ":")
+						if transmitReceiveQueue != nil && len(transmitReceiveQueue) == 2 {
+							tcp.TransmitQueue = transmitReceiveQueue[0]
+							tcp.ReceiveQueue = transmitReceiveQueue[1]
+						}
+						timerTimerExpires := strings.Split(fields[5], ":")
+						if timerTimerExpires != nil && len(timerTimerExpires) == 2 {
+							timerStateCode, _ := strconv.ParseInt(hexaNumberToInteger(timerTimerExpires[0]), 10, 64)
+							tcp.TimerActive = getTCPTimerState(timerStateCode)
+							tcp.NumberOfJiffiesUntilTimerExpires, _ = strconv.ParseInt(hexaNumberToInteger(timerTimerExpires[0]), 16, 64)
+						}
+						rtoTimeouts, _ := strconv.ParseInt(hexaNumberToInteger(fields[6]), 16, 64)
+						tcp.NumberOfUnRecoveredRTOTimeouts = rtoTimeouts
+					}
+					if len(fields)>=8 {
+						tcp.UID = fields[7]
+					}
+					if len(fields)>=9 {
+						tcp.UnAnsweredZeroWindowProbes, _ = strconv.ParseInt(fields[8], 10, 64)
+					}
+					if len(fields)>=10 {
+						tcp.INode, _ = strconv.ParseInt(fields[9], 10, 64)
+					}
+					if len(fields)>=11 {
+						tcp.SocketReferenceCount, _ = strconv.ParseInt(fields[10], 10, 64)
+					}
+					if len(fields)>=12 {
+						tcp.SocketLocationAddress = fields[11]
+					}
+					if len(fields)>=13 {
+						tcp.ReTransmitTimeout, _ = strconv.ParseInt(fields[12], 16, 64)
+					}
+					if len(fields)>=14 {
+						tcp.DelayedAcknowledgeControlData, _ = strconv.ParseInt(hexaNumberToInteger(fields[13]), 10, 64)
+					}
+					if len(fields)>=15 {
+						tcp.AcknowledgePingPong, _ = strconv.ParseInt(fields[14], 10, 64)
+					}
+					if len(fields)>=16 {
+						tcp.SendingCongestionWindow, _ = strconv.ParseInt(fields[15], 10, 64)
+					}
+					if len(fields)>=17 {
+						tcp.SlowStartThreshold, _ = strconv.ParseInt(fields[16], 10, 64)
+					}
+					/*
+
+1000 0 54165785 4 cd1e6040 25 4 27 3 -1
+|    | |        | |        |  | |  |  |--> slow start size threshold,
+|    | |        | |        |  | |  |       or -1 if the treshold
+|    | |        | |        |  | |  |       is >= 0xFFFF
+|    | |        | |        |  | |  |----> sending congestion window
+|    | |        | |        |  | |-------> (ack.quick<<1)|ack.pingpong
+|    | |        | |        |  |---------> Predicted tick of soft clock
+|    | |        | |        |               (delayed ACK control data)
+|    | |        | |        |------------> retransmit timeout
+|    | |        | |------------------> location of socket in memory
+|    | |        |-----------------------> socket reference count
+|    | |-----------------------------> inode
+|    |----------------------------------> unanswered 0-window probes
+|---------------------------------------------> uid
+			 */
+					if tcpStatusMap[tcp.ConnectionState] == nil {
+						tcpStatusMap[tcp.ConnectionState] = []*Tcp{}
+					}
+					tcpStatusMap[tcp.ConnectionState] = append(tcpStatusMap[tcp.ConnectionState], tcp)
+
+				}
+			}
+
+		}
+	}
+	return tcpStatusMap
+}
+func getTCPStateName(stateNumber int64) string {
+	state := ""
+	switch stateNumber {
+	case 1:
+		state = "TCP_ESTABLISHED"
+	case 2:
+		state = "TCP_SYN_SENT"
+	case 3:
+		state = "TCP_SYN_RECV"
+	case 4:
+		state = "TCP_FIN_WAIT1"
+	case 5:
+		state = "TCP_FIN_WAIT2"
+	case 6:
+		state = "TCP_TIME_WAIT"
+	case 7:
+		state = "TCP_CLOSE"
+	case 8:
+		state = "TCP_CLOSE_WAIT"
+	case 9:
+		state = "	TCP_LAST_ACK"
+	case 10:
+		state = "TCP_LISTEN"
+
+	}
+	return state
+}
+func getTCPTimerState(stateNumber int64) string {
+	state := ""
+	switch stateNumber {
+	case 0:
+		state = "NO_TIMER_PENDING"
+	case 1:
+		state = "TRANSMIT_TIMER_PENDING"
+	case 2:
+		state = "DELAYED_ACK_OR_KEEPALIVE_PENDING"
+	case 3:
+		state = "SOCKET_IN_TIME_WAIT Not all fields will contain data (or even exist)"
+	case 4:
+		state = "ZERO_WINDOW_PROBE_TIMER_PENDING"
+	}
+	return state
+}
+func getProcessStateName(stateChar string) string {
 	state := ""
 	switch stateChar {
 	case "R":
@@ -505,4 +701,24 @@ func getStateName(stateChar string) string {
 		state = "Parked"
 	}
 	return state
+}
+func ConvertHexToIPV4(hexString string) string {
+	result := ""
+	a, _ := hex.DecodeString(hexString)
+
+	result = fmt.Sprintf("%v.%v.%v.%v", a[3], a[2], a[1], a[0])
+	return result
+}
+func ConvertHexToIPV6(hexString string) string {
+	//result := ""
+	ip:=net.ParseIP(hexString)
+	//a, _ := hex.DecodeString(hexString)
+	//result = fmt.Sprintf("%v.%v.%v.%v.%v.%v", a[5],a[4],a[3],a[2],a[1],a[0])
+	return ip.String()
+}
+func hexaNumberToInteger(hexaString string) string {
+	// replace 0x or 0X with empty String
+	numberStr := strings.Replace(hexaString, "0x", "", -1)
+	numberStr = strings.Replace(numberStr, "0X", "", -1)
+	return numberStr
 }
